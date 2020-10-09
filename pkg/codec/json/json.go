@@ -37,8 +37,8 @@ func (constructor *Constructor) New(resource string, specs *specs.ParameterMap) 
 	}, nil
 }
 
-// Name returns the proto codec name
-func (manager *Manager) Name() string { return "json" }
+// Type returns the proto codec content type
+func (manager *Manager) Type() string { return "json" }
 
 // Property returns the manager property which is used to marshal and unmarshal data
 func (manager *Manager) Property() *specs.Property { return manager.property }

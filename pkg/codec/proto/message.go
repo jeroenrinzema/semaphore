@@ -61,8 +61,8 @@ type Manager struct {
 	desc     *desc.MessageDescriptor
 }
 
-// Name returns the proto codec name
-func (manager *Manager) Name() string {
+// Type returns the proto content type
+func (manager *Manager) Type() string {
 	return "proto"
 }
 

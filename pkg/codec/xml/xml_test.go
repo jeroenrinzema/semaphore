@@ -36,7 +36,7 @@ func TestName(t *testing.T) {
 	}
 
 	t.Run("check manager name", func(t *testing.T) {
-		if actual := manager.Name(); actual != expected {
+		if actual := manager.Type(); actual != expected {
 			t.Errorf("manager name %q was expected to be %s", actual, expected)
 		}
 	})

@@ -278,7 +278,7 @@ func TestManagerName(t *testing.T) {
 	}
 
 	expected := "form-urlencoded"
-	name := manager.Name()
+	name := manager.Type()
 	if name != expected {
 		t.Errorf("unexpected name %s, want %s", name, expected)
 	}

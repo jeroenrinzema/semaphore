@@ -285,7 +285,7 @@ func (handle *Handle) HTTPFunc(w http.ResponseWriter, r *http.Request, ps httpro
 		}
 
 		if handle.Response.Codec != nil {
-			ct, has := ContentTypes[handle.Response.Codec.Name()]
+			ct, has := ContentTypes[handle.Response.Codec.Type()]
 			if has {
 				w.Header().Set(ContentTypeHeaderKey, ct)
 			}

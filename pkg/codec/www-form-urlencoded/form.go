@@ -49,8 +49,8 @@ type Manager struct {
 	property *specs.Property
 }
 
-// Name returns the proto codec name
-func (manager *Manager) Name() string {
+// Type returns the proto codec content type
+func (manager *Manager) Type() string {
 	return Name
 }
 

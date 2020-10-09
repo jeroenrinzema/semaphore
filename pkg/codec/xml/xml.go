@@ -39,8 +39,8 @@ type Manager struct {
 	property *specs.Property
 }
 
-// Name returns the codec name.
-func (manager *Manager) Name() string { return "xml" }
+// Type returns the codec content type.
+func (manager *Manager) Type() string { return "xml" }
 
 // Property returns the manager property which is used to marshal and unmarshal data.
 func (manager *Manager) Property() *specs.Property { return manager.property }
