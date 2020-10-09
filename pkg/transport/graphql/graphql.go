@@ -85,6 +85,13 @@ func (listener *Listener) Serve() error {
 
 // Handle parses the given endpoints and constructs route handlers
 func (listener *Listener) Handle(ctx *broker.Context, endpoints []*transport.Endpoint, constructors map[string]codec.Constructor) error {
+	if len(endpoints) == 0 {
+		listener.mutex.Lock()
+		listener.schema = graphql.Schema{}
+		listener.mutex.Unlock()
+		return nil
+	}
+
 	objects := NewObjects()
 	fields := map[string]graphql.Fields{
 		QueryObject:    {},
@@ -125,7 +132,7 @@ func (listener *Listener) Handle(ctx *broker.Context, endpoints []*transport.End
 					return make(map[string]interface{}), nil
 				}
 
-				result, err := ResponseValue(endpoint.Response.Definition.Property, store)
+				result, err := ResponseObject(endpoint.Response.Definition.Property, store)
 				if err != nil {
 					return nil, err
 				}
@@ -155,7 +162,7 @@ func (listener *Listener) Handle(ctx *broker.Context, endpoints []*transport.End
 			field.Args = req
 
 			if endpoint.Request.Definition != nil && endpoint.Request.Definition.Property != nil {
-				field.Description = endpoint.Request.Definition.Property.Comment
+				field.Description = endpoint.Request.Definition.Property.Description
 			}
 		}
 

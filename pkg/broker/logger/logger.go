@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -54,11 +55,7 @@ func WithLogger(parent *broker.Context) *broker.Context {
 func SetLevel(ctx *broker.Context, pattern string, level zapcore.Level) error {
 	matched, err := filepath.Match(pattern, ctx.Module)
 	if err != nil {
-		return err
-	}
-
-	if (matched || pattern == ctx.Module) && ctx.Atom != nil {
-		ctx.Atom.SetLevel(level)
+		return fmt.Errorf("failed to match pattern: %w", err)
 	}
 
 	for _, child := range ctx.Children {
@@ -67,13 +64,21 @@ func SetLevel(ctx *broker.Context, pattern string, level zapcore.Level) error {
 		_ = SetLevel(child, pattern, level)
 	}
 
+	if (matched || pattern == ctx.Module) && ctx.Atom != nil {
+		ctx.Atom.SetLevel(level)
+	}
+
 	return nil
 }
 
 // Error logs a message at ErrorLevel. The message includes any fields passed
 // at the log site, as well as any fields accumulated on the logger.
 func Error(ctx *broker.Context, msg string, fields ...zap.Field) {
-	if ctx.Zap == nil || ctx == nil {
+	if ctx == nil {
+		return
+	}
+
+	if ctx.Zap == nil {
 		panic("context logger not set")
 	}
 
@@ -83,7 +88,11 @@ func Error(ctx *broker.Context, msg string, fields ...zap.Field) {
 // Warn logs a message at WarnLevel. The message includes any fields passed
 // at the log site, as well as any fields accumulated on the logger.
 func Warn(ctx *broker.Context, msg string, fields ...zap.Field) {
-	if ctx.Zap == nil || ctx == nil {
+	if ctx == nil {
+		return
+	}
+
+	if ctx.Zap == nil {
 		panic("context logger not set")
 	}
 
@@ -93,7 +102,11 @@ func Warn(ctx *broker.Context, msg string, fields ...zap.Field) {
 // Info logs a message at InfoLevel. The message includes any fields passed
 // at the log site, as well as any fields accumulated on the logger.
 func Info(ctx *broker.Context, msg string, fields ...zap.Field) {
-	if ctx.Zap == nil || ctx == nil {
+	if ctx == nil {
+		return
+	}
+
+	if ctx.Zap == nil {
 		panic("context logger not set")
 	}
 
@@ -103,7 +116,11 @@ func Info(ctx *broker.Context, msg string, fields ...zap.Field) {
 // Debug logs a message at DebugLevel. The message includes any fields passed
 // at the log site, as well as any fields accumulated on the logger.
 func Debug(ctx *broker.Context, msg string, fields ...zap.Field) {
-	if ctx.Zap == nil || ctx == nil {
+	if ctx == nil {
+		return
+	}
+
+	if ctx.Zap == nil {
 		panic("context logger not set")
 	}
 

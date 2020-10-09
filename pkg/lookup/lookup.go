@@ -77,12 +77,11 @@ func GetAvailableResources(flow specs.FlowInterface, breakpoint string) map[stri
 	}
 
 	if breakpoint == template.OutputResource {
-		references[template.ErrorResource] = ReferenceMap{
-			template.ResponseResource: OnErrLookup(template.OutputResource, flow.GetOnError()),
-		}
-
 		if flow.GetOnError() != nil {
-			references[template.ErrorResource][template.ParamsResource] = ParamsLookup(flow.GetOnError().Params, flow, "")
+			references[template.ErrorResource] = ReferenceMap{
+				template.ResponseResource: OnErrLookup(template.OutputResource, flow.GetOnError()),
+				template.ParamsResource:   ParamsLookup(flow.GetOnError().Params, flow, ""),
+			}
 		}
 	}
 
@@ -138,6 +137,14 @@ func GetAvailableResources(flow specs.FlowInterface, breakpoint string) map[stri
 		}
 	}
 
+	if flow.GetOutput() != nil {
+		if flow.GetOutput().Stack != nil {
+			for key, returns := range flow.GetOutput().Stack {
+				references[template.StackResource][key] = PropertyLookup(returns)
+			}
+		}
+	}
+
 	return references
 }
 
@@ -177,9 +184,13 @@ func GetReference(path string, prop string, references ReferenceMap) *specs.Prop
 func VariableHeaderLookup(header specs.Header) PathLookup {
 	return func(path string) *specs.Property {
 		header[path] = &specs.Property{
-			Path:    path,
-			Type:    types.String,
-			Default: "",
+			Path: path,
+			Template: specs.Template{
+				Scalar: &specs.Scalar{
+					Type:    types.String,
+					Default: "",
+				},
+			},
 		}
 
 		return header[path]
@@ -206,30 +217,33 @@ func HeaderLookup(header specs.Header) PathLookup {
 // PropertyLookup attempts to lookup the given path inside the params collection
 func PropertyLookup(param *specs.Property) PathLookup {
 	return func(path string) *specs.Property {
-		if param == nil {
+		switch {
+		case param == nil:
 			return nil
-		}
-
-		if path == SelfRef {
+		case path == SelfRef:
 			return param
-		}
-
-		if param.Path == path {
+		case param.Path == path:
 			return param
-		}
-
-		if param.Nested == nil {
-			return nil
-		}
-
-		for _, param := range param.Nested {
-			lookup := PropertyLookup(param)(path)
-			if lookup != nil {
-				return lookup
+		case param.Repeated != nil:
+			// TODO: allow to reference indexes
+			var template, _ = param.Repeated.Template()
+			return PropertyLookup(
+				&specs.Property{
+					Template: template,
+				},
+			)(path)
+		case param.Message != nil:
+			for _, nested := range param.Template.Message {
+				lookup := PropertyLookup(nested)(path)
+				if lookup != nil {
+					return lookup
+				}
 			}
-		}
 
-		return nil
+			return nil
+		default:
+			return nil
+		}
 	}
 }
 
@@ -253,8 +267,15 @@ func ParamsLookup(params map[string]*specs.Property, flow specs.FlowInterface, b
 				}
 
 				result := reference.Clone()
-				result.Reference = param.Reference
-				return result
+
+				if param.Scalar != nil && result.Scalar != nil {
+					param.Scalar.Type = result.Scalar.Type
+				}
+
+				param.Label = result.Label
+				param.Reference.Property = result
+
+				return param
 			}
 		}
 
@@ -270,15 +291,23 @@ func OnErrLookup(node string, spec *specs.OnError) PathLookup {
 
 	if spec.Message == nil {
 		spec.Message = &specs.Property{
-			Type:  types.String,
 			Label: labels.Optional,
+			Template: specs.Template{
+				Scalar: &specs.Scalar{
+					Type: types.String,
+				},
+			},
 		}
 	}
 
 	if spec.Status == nil {
 		spec.Status = &specs.Property{
-			Type:  types.Int64,
 			Label: labels.Optional,
+			Template: specs.Template{
+				Scalar: &specs.Scalar{
+					Type: types.Int64,
+				},
+			},
 		}
 	}
 

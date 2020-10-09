@@ -6,14 +6,17 @@ import (
 
 	"github.com/jexia/semaphore/pkg/broker"
 	"github.com/jexia/semaphore/pkg/broker/logger"
-	"github.com/jexia/semaphore/pkg/broker/trace"
 	"github.com/jexia/semaphore/pkg/specs"
+	"github.com/jexia/semaphore/pkg/specs/labels"
+	"github.com/jexia/semaphore/pkg/specs/types"
 	"go.uber.org/zap"
 )
 
 var (
 	// ReferencePattern is the matching pattern for references
 	ReferencePattern = regexp.MustCompile(`^[a-zA-Z0-9_\-\.]*:[a-zA-Z0-9\^\&\%\$@_\-\.]*$`)
+	// StringPattern is the matching pattern for strings
+	StringPattern = regexp.MustCompile(`^\'(.+)\'$`)
 )
 
 const (
@@ -96,16 +99,19 @@ func ParsePropertyReference(value string) *specs.PropertyReference {
 
 // ParseReference parses the given value as a template reference
 func ParseReference(path string, name string, value string) (*specs.Property, error) {
-	// TODO: check values
 	if strings.Count(value, "..") > 0 {
-		return nil, trace.New(trace.WithMessage("invalid path, path cannot contain two dots"))
+		return nil, ErrPathNotFound{
+			Path: value,
+		}
 	}
 
 	prop := &specs.Property{
-		Name:      name,
-		Path:      JoinPath(path, name),
-		Reference: ParsePropertyReference(value),
-		Raw:       value,
+		Name: name,
+		Path: JoinPath(path, name),
+		Raw:  value,
+		Template: specs.Template{
+			Reference: ParsePropertyReference(value),
+		},
 	}
 
 	return prop, nil
@@ -115,6 +121,23 @@ func ParseReference(path string, name string, value string) (*specs.Property, er
 func ParseContent(path string, name string, content string) (*specs.Property, error) {
 	if ReferencePattern.MatchString(content) {
 		return ParseReference(path, name, content)
+	}
+
+	if StringPattern.MatchString(content) {
+		matched := StringPattern.FindStringSubmatch(content)
+		result := &specs.Property{
+			Name:  name,
+			Path:  path,
+			Label: labels.Optional,
+			Template: specs.Template{
+				Scalar: &specs.Scalar{
+					Type:    types.String,
+					Default: matched[1],
+				},
+			},
+		}
+
+		return result, nil
 	}
 
 	return &specs.Property{
@@ -136,8 +159,7 @@ func Parse(ctx *broker.Context, path string, name string, value string) (*specs.
 
 	logger.Debug(ctx, "template results in property with type",
 		zap.String("path", path),
-		zap.String("type", string(result.Type)),
-		zap.Any("default", result.Default),
+		zap.Any("default", result.DefaultValue()),
 		zap.String("reference", result.Reference.String()),
 	)
 

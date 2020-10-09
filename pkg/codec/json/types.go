@@ -8,8 +8,8 @@ import (
 	"github.com/jexia/semaphore/pkg/specs/types"
 )
 
-// ErrUnkownType is thrown when the given type is unkown
-var ErrUnkownType = errors.New("unkown type")
+// ErrUnknownType is thrown when the given type is unknown
+var ErrUnknownType = errors.New("unknown type")
 
 // AddTypeKey encodes the given value into the given encoder
 func AddTypeKey(encoder *gojay.Encoder, key string, typed types.Type, value interface{}) {
@@ -51,6 +51,13 @@ func AddTypeKey(encoder *gojay.Encoder, key string, typed types.Type, value inte
 
 // AddType encodes the given value into the given encoder
 func AddType(encoder *gojay.Encoder, typed types.Type, value interface{}) {
+	// do not skip NULL values while encoding array elements
+	if value == nil {
+		encoder.AddNull()
+
+		return
+	}
+
 	switch typed {
 	case types.Double:
 		encoder.AddFloat64(Float64Empty(value))
@@ -132,7 +139,9 @@ func DecodeType(decoder *gojay.Decoder, prop types.Type) (interface{}, error) {
 		return value, err
 	case types.Bytes:
 		var raw string
-		decoder.AddString(&raw)
+		if err := decoder.AddString(&raw); err != nil {
+			return nil, err
+		}
 
 		value := make([]byte, len(raw))
 		_, err := base64.StdEncoding.Decode(value, []byte(raw))
@@ -155,7 +164,7 @@ func DecodeType(decoder *gojay.Decoder, prop types.Type) (interface{}, error) {
 		return value, err
 	}
 
-	return nil, ErrUnkownType
+	return nil, ErrUnknownType
 }
 
 // StringEmpty returns the given value as a string or a empty string if the value is nil
@@ -214,20 +223,26 @@ func Uint64Empty(val interface{}) uint64 {
 
 // Float64Empty returns the given value as a float64 or a empty float64 if the value is nil
 func Float64Empty(val interface{}) float64 {
-	if val == nil {
+	switch t := val.(type) {
+	case float32:
+		return float64(t)
+	case float64:
+		return t
+	default:
 		return 0
 	}
-
-	return val.(float64)
 }
 
 // Float32Empty returns the given value as a float32 or a empty float32 if the value is nil
 func Float32Empty(val interface{}) float32 {
-	if val == nil {
+	switch t := val.(type) {
+	case float32:
+		return t
+	case float64:
+		return float32(t)
+	default:
 		return 0
 	}
-
-	return val.(float32)
 }
 
 // BytesBase64Empty returns the given bytes buffer as a base64 string or a empty string if the value is nil

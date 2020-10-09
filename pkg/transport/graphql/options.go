@@ -1,7 +1,6 @@
 package graphql
 
 import (
-	"github.com/jexia/semaphore/pkg/broker/trace"
 	"github.com/jexia/semaphore/pkg/transport"
 )
 
@@ -22,8 +21,12 @@ type EndpointOptions struct {
 }
 
 // ParseEndpointOptions parses the given specs options into HTTP options
-func ParseEndpointOptions(endpoint *transport.Endpoint) (*EndpointOptions, error) {
-	result := &EndpointOptions{
+func ParseEndpointOptions(endpoint *transport.Endpoint) (EndpointOptions, error) {
+	if endpoint == nil || endpoint.Flow == nil {
+		return EndpointOptions{}, nil
+	}
+
+	result := EndpointOptions{
 		Name: endpoint.Flow.GetName(),
 		Path: endpoint.Flow.GetName(),
 		Base: "query",
@@ -37,7 +40,9 @@ func ParseEndpointOptions(endpoint *transport.Endpoint) (*EndpointOptions, error
 	base, has := endpoint.Options[BaseOption]
 	if has {
 		if base != QueryObject && base != MutationObject {
-			return nil, trace.New(trace.WithMessage("unknown base '%s', expected query or mutation", base))
+			return EndpointOptions{}, ErrUnknownBase{
+				Base: base,
+			}
 		}
 
 		result.Base = base

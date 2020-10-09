@@ -1,27 +1,27 @@
 package endpoints
 
 import (
-	"errors"
+	"fmt"
 
 	"github.com/jexia/semaphore"
 	"github.com/jexia/semaphore/pkg/broker"
 	"github.com/jexia/semaphore/pkg/broker/logger"
 	"github.com/jexia/semaphore/pkg/broker/manager"
-	"github.com/jexia/semaphore/pkg/broker/trace"
 	"github.com/jexia/semaphore/pkg/functions"
 	"github.com/jexia/semaphore/pkg/specs"
 	"github.com/jexia/semaphore/pkg/transport"
 	"go.uber.org/zap"
 )
 
-// ErrFlowNotFound is returned when a given flow is not found
-var ErrFlowNotFound = errors.New("flow not found")
-
 // NewOptions constructs a new endpoint option object from the passed options
 func NewOptions(opts ...EndpointOption) Options {
 	result := Options{}
 
 	for _, opt := range opts {
+		if opt == nil {
+			continue
+		}
+
 		opt(&result)
 	}
 
@@ -62,6 +62,10 @@ func WithCore(conf semaphore.Options) EndpointOption {
 
 // Transporters constructs a new transport Endpoints list from the given endpoints and options
 func Transporters(ctx *broker.Context, endpoints specs.EndpointList, flows specs.FlowListInterface, opts ...EndpointOption) (transport.EndpointList, error) {
+	if ctx == nil {
+		return nil, nil
+	}
+
 	options := NewOptions(opts...)
 
 	results := make(transport.EndpointList, len(endpoints))
@@ -78,12 +82,12 @@ func Transporters(ctx *broker.Context, endpoints specs.EndpointList, flows specs
 		)
 
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to construct flow: %w", err)
 		}
 
 		forward, err := forwarder(selected.GetForward(), options)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to construct flow caller: %w", err)
 		}
 
 		results[index] = transport.NewEndpoint(endpoint.Listener, manager, forward, endpoint.Options, selected.GetInput(), selected.GetOutput())
@@ -100,7 +104,7 @@ func forwarder(call *specs.Call, options Options) (*transport.Forward, error) {
 
 	service := options.services.Get(call.Service)
 	if service == nil {
-		return nil, trace.New(trace.WithMessage("the service for '%s' was not found", call.Method))
+		return nil, ErrUnknownService{Service: call.Service}
 	}
 
 	result := &transport.Forward{

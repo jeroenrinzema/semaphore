@@ -3,6 +3,8 @@ package formencoded
 import (
 	"errors"
 	"fmt"
+
+	"github.com/jexia/semaphore/pkg/prettyerr"
 )
 
 var errNilSchema = errors.New("nil schema")
@@ -19,8 +21,18 @@ func (e errUnknownLabel) Error() string {
 	return fmt.Sprintf("unknown label %q", string(e))
 }
 
-type errUnknownType string
+// ErrUndefinedSpecs occurs when spacs are nil
+type ErrUndefinedSpecs struct{}
 
-func (e errUnknownType) Error() string {
-	return fmt.Sprintf("unknown data type %q", string(e))
+// Error returns a description of the given error as a string
+func (e ErrUndefinedSpecs) Error() string {
+	return fmt.Sprint("no object specs defined")
+}
+
+// Prettify returns the prettified version of the given error
+func (e ErrUndefinedSpecs) Prettify() prettyerr.Error {
+	return prettyerr.Error{
+		Code:    "UndefinedSpecs",
+		Message: e.Error(),
+	}
 }

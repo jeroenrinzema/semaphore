@@ -2,96 +2,50 @@ package formencoded
 
 import (
 	"encoding/base64"
-	"net/url"
 	"strconv"
 
 	"github.com/jexia/semaphore/pkg/specs/types"
 )
 
 // AddTypeKey encodes the given value into the given encoder
-func AddTypeKey(encoder url.Values, key string, typed types.Type, value interface{}) {
-	var encoded string
+func castType(typed types.Type, value interface{}) string {
+	var casted string
 	switch typed {
 	case types.Double:
-		encoded = Float64Empty(value)
+		casted = Float64Empty(value)
 	case types.Int64:
-		encoded = Int64Empty(value)
+		casted = Int64Empty(value)
 	case types.Uint64:
-		encoded = Uint64Empty(value)
+		casted = Uint64Empty(value)
 	case types.Fixed64:
-		encoded = Uint64Empty(value)
+		casted = Uint64Empty(value)
 	case types.Int32:
-		encoded = Int32Empty(value)
+		casted = Int32Empty(value)
 	case types.Uint32:
-		encoded = Uint32Empty(value)
+		casted = Uint32Empty(value)
 	case types.Fixed32:
-		encoded = Uint32Empty(value)
+		casted = Uint32Empty(value)
 	case types.Float:
-		encoded = Float32Empty(value)
+		casted = Float32Empty(value)
 	case types.String:
-		encoded = StringEmpty(value)
+		casted = StringEmpty(value)
 	case types.Enum:
-		encoded = StringEmpty(value)
+		casted = StringEmpty(value)
 	case types.Bool:
-		encoded = BoolEmpty(value)
+		casted = BoolEmpty(value)
 	case types.Bytes:
-		encoded = BytesBase64Empty(value)
+		casted = BytesBase64Empty(value)
 	case types.Sfixed32:
-		encoded = Int32Empty(value)
+		casted = Int32Empty(value)
 	case types.Sfixed64:
-		encoded = Int64Empty(value)
+		casted = Int64Empty(value)
 	case types.Sint32:
-		encoded = Int32Empty(value)
+		casted = Int32Empty(value)
 	case types.Sint64:
-		encoded = Int64Empty(value)
+		casted = Int64Empty(value)
 	}
 
-	encoder.Add(key, encoded)
-}
-
-// DecodeType decodes the given property from the given decoder
-func DecodeType(raw string, typed types.Type) (interface{}, error) {
-	switch typed {
-	case types.Double:
-		return strconv.ParseFloat(raw, 64)
-	case types.Float:
-		value, err := strconv.ParseFloat(raw, 64)
-		return float64(value), err
-	case types.Int64:
-		return strconv.ParseInt(raw, 10, 64)
-	case types.Uint64:
-		return strconv.ParseUint(raw, 10, 64)
-	case types.Fixed64:
-		return strconv.ParseUint(raw, 10, 64)
-	case types.Int32:
-		value, err := strconv.ParseInt(raw, 10, 32)
-		return int32(value), err
-	case types.Uint32:
-		value, err := strconv.ParseUint(raw, 10, 32)
-		return uint32(value), err
-	case types.Fixed32:
-		value, err := strconv.ParseUint(raw, 10, 32)
-		return uint32(value), err
-	case types.String:
-		return raw, nil
-	case types.Bool:
-		return strconv.ParseBool(raw)
-	case types.Bytes:
-		return base64.StdEncoding.DecodeString(raw)
-	case types.Sfixed32:
-		value, err := strconv.ParseInt(raw, 10, 32)
-		return int32(value), err
-	case types.Sfixed64:
-		value, err := strconv.ParseInt(raw, 10, 64)
-		return value, err
-	case types.Sint32:
-		value, err := strconv.ParseInt(raw, 10, 32)
-		return int32(value), err
-	case types.Sint64:
-		return strconv.ParseInt(raw, 10, 64)
-	default:
-		return nil, errUnknownType(typed)
-	}
+	return casted
 }
 
 // StringEmpty returns the given value as a string or a empty string if the value is nil

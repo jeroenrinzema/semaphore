@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -9,10 +10,10 @@ import (
 
 	"github.com/jexia/semaphore/pkg/broker"
 	"github.com/jexia/semaphore/pkg/broker/logger"
-	"github.com/jexia/semaphore/pkg/broker/trace"
 	"github.com/jexia/semaphore/pkg/functions"
 	"github.com/jexia/semaphore/pkg/references"
 	"github.com/jexia/semaphore/pkg/specs"
+	"github.com/jexia/semaphore/pkg/specs/labels"
 	"github.com/jexia/semaphore/pkg/specs/types"
 	"github.com/jexia/semaphore/pkg/transport"
 	"go.uber.org/zap"
@@ -137,7 +138,7 @@ func (call *Call) GetMethod(name string) transport.Method {
 // SendMsg calls the configured host and attempts to call the given endpoint with the given headers and stream
 func (call *Call) SendMsg(ctx context.Context, rw transport.ResponseWriter, pr *transport.Request, refs references.Store) error {
 	request := http.MethodGet
-	url, err := url.Parse(call.host)
+	uri, err := url.Parse(call.host)
 	if err != nil {
 		return err
 	}
@@ -145,23 +146,32 @@ func (call *Call) SendMsg(ctx context.Context, rw transport.ResponseWriter, pr *
 	if pr.Method != nil {
 		method := call.methods[pr.Method.GetName()]
 		if method == nil {
-			return trace.New(trace.WithMessage("unknown method '%s' for service '%s'", pr.Method, call.service))
+			return ErrUnknownMethod{
+				Method:  pr.Method.GetName(),
+				Service: call.service,
+			}
 		}
 
 		endpoint := LookupEndpointReferences(method, refs)
 		if endpoint != "" {
-			url.Path = endpoint
+			endpointURI, err := url.Parse(endpoint)
+			if err != nil {
+				return fmt.Errorf("failed to parse endpoint: %w", err)
+			}
+
+			uri.Path = endpointURI.Path
+			uri.RawQuery = endpointURI.RawQuery
 		}
 
 		request = method.request
 	}
 
 	logger.Debug(call.ctx, "calling HTTP caller",
-		zap.String("url", url.String()),
+		zap.String("uri", uri.String()),
 		zap.String("method", request),
 	)
 
-	req, err := http.NewRequestWithContext(ctx, request, url.String(), pr.Body)
+	req, err := http.NewRequestWithContext(ctx, request, uri.String(), pr.Body)
 	if err != nil {
 		return err
 	}
@@ -194,7 +204,7 @@ func LookupEndpointReferences(method *Method, store references.Store) string {
 
 	for _, prop := range method.references {
 		ref := store.Load(prop.Reference.Resource, prop.Reference.Path)
-		if ref == nil || prop.Type != types.String {
+		if ref == nil || prop.Scalar.Type != types.String {
 			result = strings.Replace(result, prop.Path, "", 1)
 			continue
 		}
@@ -218,10 +228,16 @@ func TemplateReferences(value string, functions functions.Custom) ([]*specs.Prop
 	for _, key := range references {
 		path := key[1:]
 		property := &specs.Property{
-			Path: key,
-			Reference: &specs.PropertyReference{
-				Resource: ".params",
-				Path:     path,
+			Path:  key,
+			Label: labels.Optional,
+			Template: specs.Template{
+				Reference: &specs.PropertyReference{
+					Resource: ".params",
+					Path:     path,
+				},
+				Scalar: &specs.Scalar{
+					Type: types.String,
+				},
 			},
 		}
 

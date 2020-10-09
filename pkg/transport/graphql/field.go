@@ -4,11 +4,14 @@ import (
 	"strings"
 
 	"github.com/graphql-go/graphql"
-	"github.com/jexia/semaphore/pkg/broker/trace"
 )
 
 // SetField sets the given field inside the given fields on the given path
 func SetField(path string, fields graphql.Fields, field *graphql.Field) error {
+	if fields == nil || field == nil {
+		return nil
+	}
+
 	if IsNestedPath(path) {
 		parts := ParsePath(path)
 		key := parts[0]
@@ -31,7 +34,10 @@ func SetField(path string, fields graphql.Fields, field *graphql.Field) error {
 
 		nested, is := target.Type.(*graphql.Object)
 		if !is {
-			return trace.New(trace.WithMessage("unable set field '%s' in '%s'", key, path))
+			return ErrTypeMismatch{
+				Type:     key,
+				Expected: path,
+			}
 		}
 
 		err := SetFieldPath(nested, NewPath(parts[1:]), field)
@@ -75,39 +81,32 @@ func SetFieldPath(object *graphql.Object, path string, field *graphql.Field) err
 	target, has := fields[key]
 
 	if len(parts) > 1 {
-		config := graphql.ObjectConfig{
+		nested := graphql.NewObject(graphql.ObjectConfig{
 			Name:   key,
 			Fields: make(graphql.Fields),
-		}
-
-		nested := graphql.NewObject(config)
+		})
 
 		if has {
 			result, isObject := target.Type.(*graphql.Object)
 			if !isObject {
-				return trace.New(trace.WithMessage("unable set field '%s' in '%s'", key, path))
+				return ErrTypeMismatch{
+					Type:     key,
+					Expected: path,
+				}
 			}
 
 			nested = result
 		}
-
-		part := &graphql.Field{
-			Name: key,
-			Type: nested,
-			Resolve: func(p graphql.ResolveParams) (interface{}, error) {
-				return p.Source, nil
-			},
-		}
-
-		object.AddFieldConfig(key, part)
-		object.Fields()
 
 		return SetFieldPath(nested, NewPath(parts[1:]), field)
 	}
 
 	// Check if field is set and path has parts left
 	if has {
-		return trace.New(trace.WithMessage("field already set '%s' in '%s'", key, path))
+		return ErrFieldAlreadySet{
+			Path:  path,
+			Field: key,
+		}
 	}
 
 	object.AddFieldConfig(key, field)

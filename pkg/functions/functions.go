@@ -8,7 +8,6 @@ import (
 
 	"github.com/jexia/semaphore/pkg/broker"
 	"github.com/jexia/semaphore/pkg/broker/logger"
-	"github.com/jexia/semaphore/pkg/broker/trace"
 	"github.com/jexia/semaphore/pkg/references"
 	"github.com/jexia/semaphore/pkg/specs"
 	"github.com/jexia/semaphore/pkg/specs/template"
@@ -234,8 +233,8 @@ func PreparePropertyFunctions(ctx *broker.Context, node *specs.Node, flow specs.
 		return nil
 	}
 
-	if prop.Nested != nil {
-		for _, nested := range prop.Nested {
+	if prop.Message != nil {
+		for _, nested := range prop.Message {
 			err := PreparePropertyFunctions(ctx, node, flow, stack, nested, functions)
 			if err != nil {
 				return err
@@ -266,7 +265,10 @@ func PrepareFunction(ctx *broker.Context, node *specs.Node, flow specs.FlowInter
 	args := strings.Split(pattern[2], ArgumentDelimiter)
 
 	if methods[fn] == nil {
-		return trace.New(trace.WithMessage("undefined custom function '%s' in '%s'", fn, property.Raw))
+		return ErrUndefinedFunction{
+			Function: fn,
+			Property: property.Raw,
+		}
 	}
 
 	arguments := make([]*specs.Property, len(args))
@@ -304,16 +306,15 @@ func PrepareFunction(ctx *broker.Context, node *specs.Node, flow specs.FlowInter
 
 	stack[ref] = function
 
-	property.Type = returns.Type
+	property.Template = returns.Template
 	property.Label = returns.Label
-	property.Default = returns.Default
 	property.Reference = &specs.PropertyReference{
 		Resource: template.JoinPath(template.StackResource, ref),
 		Path:     ".",
 		Property: returns,
 	}
 
-	references.ScopeNestedReferences(returns, property)
+	references.ScopeNestedReferences(&returns.Template, &property.Template)
 	return nil
 }
 

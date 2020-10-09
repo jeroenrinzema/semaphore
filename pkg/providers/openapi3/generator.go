@@ -3,6 +3,7 @@ package openapi3
 import (
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/jexia/semaphore/pkg/providers/openapi3/types"
@@ -50,6 +51,7 @@ func IncludeEndpoint(object *Object, endpoint *specs.Endpoint, flow specs.FlowIn
 
 	path := options.Endpoint
 	params := transport.RawNamedParameters(options.Endpoint)
+
 	for _, param := range params {
 		single := transport.NamedParameters(param)
 		template := fmt.Sprintf("{%s}", single[0])
@@ -91,12 +93,24 @@ func GenerateOperation(object *Object, endpoint *specs.Endpoint, options *transp
 	output := flow.GetOutput()
 	result := &Operation{}
 
-	for _, key := range transport.NamedParameters(options.Endpoint) {
+	params := transport.NamedParameters(options.Endpoint)
+	sort.Strings(params)
+
+	for _, key := range params {
 		result.Parameters = append(result.Parameters, GenerateParameter(key, true, ParameterPath, nil))
 	}
 
 	if input != nil {
-		for key, prop := range flow.GetInput().Header {
+		// ensure header order
+		headers := make([]string, 0, len(flow.GetInput().Header))
+		for key := range flow.GetInput().Header {
+			headers = append(headers, key)
+		}
+
+		sort.Strings(headers)
+
+		for _, key := range headers {
+			prop := flow.GetInput().Header[key]
 			result.Parameters = append(result.Parameters, GenerateParameter(key, false, ParameterHeader, prop))
 		}
 
@@ -148,9 +162,9 @@ func GenerateParameter(key string, required bool, in ParameterIn, property *spec
 	}
 
 	if property != nil {
-		result.Description = property.Comment
+		result.Description = property.Description
 		result.Schema = &Schema{
-			Type: types.Open(property.Type),
+			Type: types.Open(property.Type()),
 		}
 	}
 
@@ -171,38 +185,58 @@ func IncludeParameterMap(object *Object, params *specs.ParameterMap) {
 		object.Components.Schemas = map[string]*Schema{}
 	}
 
-	object.Components.Schemas[params.Schema] = GenerateSchema(params.Property)
+	object.Components.Schemas[params.Schema] = GenerateSchema(params.Property.Description, params.Property.Template)
 }
 
 // GenerateSchema generates a new schema for the given property
-func GenerateSchema(property *specs.Property) *Schema {
-	if property == nil {
-		return nil
-	}
-
+func GenerateSchema(description string, property specs.Template) *Schema {
 	result := &Schema{
-		Description: property.Comment,
-		Default:     property.Default,
-		Type:        types.Open(property.Type),
+		Description: description,
+		Type:        types.Open(property.Type()),
 	}
 
-	if property.Nested != nil {
-		result.Properties = make(map[string]*Schema, len(property.Nested))
-	}
+	switch {
+	case property.Scalar != nil:
+		result.Default = property.Scalar.Default
 
-	for key, nested := range property.Nested {
-		result.Properties[key] = GenerateSchema(nested)
+		break
+	case property.Message != nil:
+		result.Properties = make(map[string]*Schema, len(property.Message))
 
-		if nested.Label == labels.Required {
-			result.Required = append(result.Required, key)
+		for _, nested := range property.Message {
+			result.Properties[nested.Name] = GenerateSchema(nested.Description, nested.Template)
+
+			if nested.Label == labels.Required {
+				result.Required = append(result.Required, nested.Name)
+			}
 		}
-	}
 
-	if property.Enum != nil {
-		result.Enum = make([]interface{}, 0, len(property.Enum.Keys))
+		break
+	case property.Enum != nil:
+		// ensure property enum order
+		result.Enum = make([]interface{}, len(property.Enum.Keys))
+		keys := make([]int, 0, len(property.Enum.Positions))
 
-		for key := range property.Enum.Keys {
-			result.Enum = append(result.Enum, key)
+		for key := range property.Enum.Positions {
+			keys = append(keys, int(key))
+		}
+
+		sort.Ints(keys)
+
+		for pos, key := range keys {
+			result.Enum[pos] = property.Enum.Positions[int32(key)].Key
+		}
+
+		break
+	case property.Repeated != nil:
+		template, err := property.Repeated.Template()
+		if err != nil {
+			panic(err)
+		}
+
+		return &Schema{
+			Description: description,
+			Items:       GenerateSchema("", template),
 		}
 	}
 

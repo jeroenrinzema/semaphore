@@ -13,8 +13,6 @@ import (
 	"github.com/jexia/semaphore/pkg/codec/json"
 	"github.com/jexia/semaphore/pkg/codec/metadata"
 	"github.com/jexia/semaphore/pkg/references"
-	"github.com/jexia/semaphore/pkg/specs/labels"
-	"github.com/jexia/semaphore/pkg/specs/types"
 	"github.com/jexia/semaphore/pkg/transport"
 )
 
@@ -61,12 +59,17 @@ func TestCaller(t *testing.T) {
 
 	refs := references.NewReferenceStore(1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		want := "/Path?query=value"
+		got := r.URL.String()
+		if got != want {
+			t.Errorf("expected server addressed by %s, but got %s", want, got)
+		}
 		w.Write([]byte(`{"message":"` + message + `"}`))
 	}))
 
 	defer server.Close()
 
-	service := NewMockService(server.URL, "GET", "/")
+	service := NewMockService(server.URL, "GET", "/Path?query=value")
 	caller, err := NewMockCaller().Dial(service, nil, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -121,6 +124,35 @@ func TestCallerUnknownMethod(t *testing.T) {
 
 	if len(call.GetMethods()) != 1 {
 		t.Fatalf("unexpected methods %+v, expected a single method to be defined", call.GetMethods())
+	}
+}
+
+func TestErrUnknownMethod(t *testing.T) {
+	type fields struct {
+		Method  string
+		Service string
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   string
+	}{
+		{
+			"return the formatted error",
+			fields{Method: "get", Service: "getsources"},
+			"unknown method 'get' for service 'getsources'",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := ErrUnknownMethod{
+				Method:  "get",
+				Service: "getsources",
+			}
+			if got := e.Prettify(); got.Message != tt.want {
+				t.Errorf("Error() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -322,9 +354,6 @@ func TestCallerReferencesLookup(t *testing.T) {
 			if len(refs) != 1 {
 				t.Fatalf("unexpected references %+v", refs)
 			}
-
-			refs[0].Type = types.String
-			refs[0].Label = labels.Optional
 
 			store := references.NewReferenceStore(1)
 			ctx := context.Background()

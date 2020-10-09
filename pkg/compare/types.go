@@ -1,9 +1,10 @@
 package compare
 
 import (
+	"fmt"
+
 	"github.com/jexia/semaphore/pkg/broker"
 	"github.com/jexia/semaphore/pkg/broker/logger"
-	"github.com/jexia/semaphore/pkg/broker/trace"
 	"github.com/jexia/semaphore/pkg/specs"
 	"github.com/jexia/semaphore/pkg/specs/types"
 	"go.uber.org/zap"
@@ -15,39 +16,6 @@ func Types(ctx *broker.Context, services specs.ServiceList, objects specs.Schema
 
 	for _, flow := range flows {
 		err := FlowTypes(ctx, services, objects, flow)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// ProxyTypes compares the given proxy against the configured schema types
-func ProxyTypes(ctx *broker.Context, services specs.ServiceList, objects specs.Schemas, proxy *specs.Proxy) (err error) {
-	logger.Info(ctx, "Compare proxy flow types", zap.String("proxy", proxy.GetName()))
-
-	if proxy.OnError != nil {
-		err = CheckParameterMapTypes(ctx, proxy.OnError.Response, objects, proxy)
-		if err != nil {
-			return err
-		}
-	}
-
-	for _, node := range proxy.Nodes {
-		err = CallTypes(ctx, services, objects, node, node.Call, proxy)
-		if err != nil {
-			return err
-		}
-
-		err = CallTypes(ctx, services, objects, node, node.Rollback, proxy)
-		if err != nil {
-			return err
-		}
-	}
-
-	if proxy.Forward.Request.Header != nil {
-		err = CheckHeader(proxy.Forward.Request.Header, proxy)
 		if err != nil {
 			return err
 		}
@@ -89,7 +57,10 @@ func FlowTypes(ctx *broker.Context, services specs.ServiceList, objects specs.Sc
 	if flow.GetOutput() != nil {
 		message := objects.Get(flow.GetOutput().Schema)
 		if message == nil {
-			return trace.New(trace.WithMessage("undefined flow output object '%s' in '%s'", flow.GetOutput().Schema, flow.GetName()))
+			return ErrUndefinedObject{
+				Flow:   flow.GetName(),
+				Schema: flow.GetOutput().Schema,
+			}
 		}
 
 		err = CheckParameterMapTypes(ctx, flow.GetOutput(), objects, flow)
@@ -124,12 +95,18 @@ func CallTypes(ctx *broker.Context, services specs.ServiceList, objects specs.Sc
 
 	service := services.Get(call.Service)
 	if service == nil {
-		return trace.New(trace.WithMessage("undefined service '%s' in flow '%s'", call.Service, flow.GetName()))
+		return ErrUndefinedService{
+			Flow:    flow.GetName(),
+			Service: call.Service,
+		}
 	}
 
 	method := service.GetMethod(call.Method)
 	if method == nil {
-		return trace.New(trace.WithMessage("undefined method '%s' in flow '%s'", call.Method, flow.GetName()))
+		return ErrUndefinedMethod{
+			Flow:   flow.GetName(),
+			Method: call.Method,
+		}
 	}
 
 	err = CheckParameterMapTypes(ctx, call.Request, objects, flow)
@@ -165,57 +142,26 @@ func CheckParameterMapTypes(ctx *broker.Context, parameters *specs.ParameterMap,
 		}
 	}
 
-	err := CheckPropertyTypes(parameters.Property, objects.Get(parameters.Schema), flow)
+	schema := objects.Get(parameters.Schema)
+	err := parameters.Property.Compare(schema)
 	if err != nil {
-		return err
+		return fmt.Errorf("flow '%s' mismatch: %w", flow.GetName(), err)
 	}
 
-	return nil
-}
-
-// CheckPropertyTypes checks the given schema against the given schema method types
-func CheckPropertyTypes(property *specs.Property, schema *specs.Property, flow specs.FlowInterface) (err error) {
-	if schema == nil {
-		return trace.New(trace.WithExpression(property.Expr), trace.WithMessage("unable to check types for '%s' no schema given", property.Path))
-	}
-
-	if property.Type != schema.Type {
-		return trace.New(trace.WithExpression(property.Expr), trace.WithMessage("cannot use type (%s) for '%s', expected (%s)", property.Type, property.Path, schema.Type))
-	}
-
-	if property.Label != schema.Label {
-		return trace.New(trace.WithExpression(property.Expr), trace.WithMessage("cannot use label (%s) for '%s', expected (%s)", property.Label, property.Path, schema.Label))
-	}
-
-	if len(property.Nested) > 0 {
-		if len(schema.Nested) == 0 {
-			return trace.New(trace.WithExpression(property.Expr), trace.WithMessage("property '%s' has a nested object but schema does not '%s'", property.Path, schema.Name))
-		}
-
-		for key, nested := range property.Nested {
-			object := schema.Nested[key]
-			if object == nil {
-				return trace.New(trace.WithExpression(nested.Expr), trace.WithMessage("undefined schema nested message property '%s' in flow '%s'", nested.Path, flow.GetName()))
-			}
-
-			err := CheckPropertyTypes(nested, object, flow)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	// ensure the property position
-	property.Position = schema.Position
-
+	parameters.Property.Define(schema)
 	return nil
 }
 
 // CheckHeader compares the given header types
 func CheckHeader(header specs.Header, flow specs.FlowInterface) error {
 	for _, header := range header {
-		if header.Type != types.String {
-			return trace.New(trace.WithMessage("cannot use type (%s) for 'header.%s' in flow '%s', expected (%s)", header.Type, header.Path, flow.GetName(), types.String))
+		if header.Type() != types.String {
+			return ErrHeaderTypeMismatch{
+				Type:     header.Type(),
+				Path:     header.Path,
+				Flow:     flow.GetName(),
+				Expected: types.String,
+			}
 		}
 	}
 

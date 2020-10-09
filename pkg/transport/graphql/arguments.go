@@ -2,9 +2,7 @@ package graphql
 
 import (
 	"github.com/graphql-go/graphql"
-	"github.com/jexia/semaphore/pkg/broker/trace"
 	"github.com/jexia/semaphore/pkg/specs"
-	"github.com/jexia/semaphore/pkg/specs/labels"
 	"github.com/jexia/semaphore/pkg/specs/types"
 )
 
@@ -21,30 +19,31 @@ func NewArgs(props *specs.ParameterMap) (graphql.FieldConfigArgument, error) {
 	prop := props.Property
 	args := graphql.FieldConfigArgument{}
 
-	if prop.Type != types.Message {
-		return nil, trace.New(trace.WithMessage("arguments must be a object, received '%s'", prop.Type))
+	if prop.Type() != types.Message {
+		return nil, ErrUnexpectedType{
+			Type:     prop.Type(),
+			Expected: types.Message,
+		}
 	}
 
-	if len(prop.Nested) == 0 {
+	if len(prop.Message) == 0 {
 		return args, nil
 	}
 
-	for _, nested := range prop.Nested {
-		typ := gtypes[nested.Type]
-		if nested.Type == types.Message {
+	for _, nested := range prop.Message {
+		typ := gtypes[nested.Type()]
+
+		switch {
+		case nested.Message != nil:
 			result, err := NewInputArgObject(nested)
 			if err != nil {
 				return nil, err
 			}
 
 			typ = result
-		}
-
-		if prop.Label == labels.Repeated {
+		case nested.Repeated != nil:
 			typ = graphql.NewList(typ)
-		}
-
-		if nested.Type == types.Enum {
+		case nested.Enum != nil:
 			values := graphql.EnumValueConfigMap{}
 
 			for key, field := range nested.Enum.Keys {
@@ -65,7 +64,7 @@ func NewArgs(props *specs.ParameterMap) (graphql.FieldConfigArgument, error) {
 
 		args[nested.Name] = &graphql.ArgumentConfig{
 			Type:        typ,
-			Description: nested.Comment,
+			Description: nested.Description,
 		}
 	}
 
@@ -74,28 +73,33 @@ func NewArgs(props *specs.ParameterMap) (graphql.FieldConfigArgument, error) {
 
 // NewInputArgObject constructs a new input argument object
 func NewInputArgObject(prop *specs.Property) (*graphql.InputObject, error) {
-	if prop.Type != types.Message {
-		return nil, trace.New(trace.WithMessage("expected a message type received '%s'", prop.Type))
+	if prop == nil {
+		return &graphql.InputObject{}, nil
+	}
+
+	if prop.Type() != types.Message {
+		return nil, ErrUnexpectedType{
+			Type:     prop.Type(),
+			Expected: types.Message,
+		}
 	}
 
 	fields := graphql.InputObjectConfigFieldMap{}
 
-	for _, nested := range prop.Nested {
-		typ := gtypes[nested.Type]
-		if nested.Type == types.Message {
+	for _, nested := range prop.Message {
+		typ := gtypes[nested.Type()]
+
+		switch {
+		case nested.Message != nil:
 			result, err := NewInputArgObject(nested)
 			if err != nil {
 				return nil, err
 			}
 
 			typ = result
-		}
-
-		if prop.Label == labels.Repeated {
+		case nested.Repeated != nil:
 			typ = graphql.NewList(typ)
-		}
-
-		if nested.Type == types.Enum {
+		case nested.Enum != nil:
 			values := graphql.EnumValueConfigMap{}
 
 			for key, field := range nested.Enum.Keys {
@@ -116,15 +120,20 @@ func NewInputArgObject(prop *specs.Property) (*graphql.InputObject, error) {
 
 		fields[nested.Name] = &graphql.InputObjectFieldConfig{
 			Type:        typ,
-			Description: nested.Comment,
+			Description: nested.Description,
 		}
 	}
 
 	result := graphql.NewInputObject(graphql.InputObjectConfig{
 		Name:        prop.Name,
 		Fields:      fields,
-		Description: prop.Comment,
+		Description: prop.Description,
 	})
+
+	err := result.Error()
+	if err != nil {
+		return nil, err
+	}
 
 	return result, nil
 }
